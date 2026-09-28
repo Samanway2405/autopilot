@@ -18,80 +18,12 @@
 import { Worker, Job } from "bullmq";
 import { getDb } from "../lib/db";
 import { executeRuleTransaction } from "../lib/engine";
+import { doesPaymentMatchTrigger } from "../lib/paymentTrigger";
 import { checkSpendingLimit, recordSpend } from "./limitGuard";
 import { PAYMENT_QUEUE_NAME, PaymentJobData, CronJobData, CRON_QUEUE_NAME, getConnectionOptions } from "./queue";
 import { readConfiguredLimit } from "../lib/pagination";
 
 const DEFAULT_MAX_RULES_PER_USER = 20;
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-/** Assets the engine can move on a rule execution. */
-export type SupportedAsset = "XLM" | "USDC";
-
-/**
- * Horizon reports assets as "XLM" (native) or "CODE:ISSUER".
- * Returns the supported asset code, or null for assets we can't execute against.
- */
-export function parseAssetCode(asset: string): SupportedAsset | null {
-  const code = asset === "XLM" ? "XLM" : asset.split(":")[0]?.toUpperCase();
-  return code === "XLM" || code === "USDC" ? code : null;
-}
-
-/**
- * Infer which asset a rule operates on from its own text.
- *
- * Used for scheduled (cron) rules, where there is no incoming payment to read
- * the asset from. Defaults to XLM so an unqualified rule behaves as before.
- * A rule naming both assets is treated as XLM — the safer default, since XLM
- * needs no trustline.
- */
-export function ruleAsset(rule: {
-  trigger?: string | null;
-  action?: string | null;
-  memo?: string | null;
-  description?: string | null;
-}): SupportedAsset {
-  const text = [rule.trigger, rule.action, rule.memo, rule.description]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return text.includes("usdc") && !text.includes("xlm") ? "USDC" : "XLM";
-}
-
-export function doesPaymentMatchTrigger(trigger: string, asset: string): boolean {
-  const t = trigger.toLowerCase();
-
-  // Unsupported assets (arbitrary tokens) can never be executed against.
-  const assetCode = parseAssetCode(asset);
-  if (!assetCode) return false;
-
-  const matchesTrigger =
-    t.includes("every payment") ||
-    t.includes("payment received") ||
-    t.includes("payment") ||
-    t.includes("receive") ||
-    t.includes("received") ||
-    t.includes("incoming") ||
-    t.includes("deposit") ||
-    t.includes("salary") ||
-    t.includes("income") ||
-    t.includes("transfer") ||
-    t.includes("xlm") ||
-    t.includes("usdc");
-
-  if (!matchesTrigger) return false;
-
-  // A trigger naming one asset only fires for that asset; a generic trigger
-  // ("every payment", "salary", …) fires for any supported asset.
-  const namesXLM = t.includes("xlm");
-  const namesUSDC = t.includes("usdc");
-  if (namesXLM && !namesUSDC) return assetCode === "XLM";
-  if (namesUSDC && !namesXLM) return assetCode === "USDC";
-
-  return true;
-}
 
 /**
  * Core payment processing logic — exported for direct use.
