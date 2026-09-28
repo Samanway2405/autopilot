@@ -1,12 +1,13 @@
 #![allow(deprecated)]
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env};
-
-const DAY_IN_LEDGERS: u32 = 17280;
-const THIRTY_DAYS_IN_LEDGERS: u32 = 17280 * 30;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String,
+};
 
 #[contract]
 pub struct AutopilotVault;
+
+const INSTANCE_TTL_LEDGERS: u32 = 17_280 * 30;
 
 #[contracttype]
 #[derive(Clone)]
@@ -29,14 +30,7 @@ impl AutopilotVault {
         env.storage().instance().set(&DataKey::Engine, &engine);
         env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::IsInitialized, &true);
-
-        env.storage()
-            .instance()
-            .extend_ttl(DAY_IN_LEDGERS, THIRTY_DAYS_IN_LEDGERS);
-
-        // Emit an event so initialization is auditable on-chain
-        env.events()
-            .publish((symbol_short!("init"), owner.clone()), engine.clone());
+        Self::bump_ttl(&env);
     }
 
     /// Get the owner address
@@ -100,10 +94,10 @@ impl AutopilotVault {
 
     /// Withdraw funds - only the owner can withdraw
     pub fn withdraw(env: Env, amount: i128, token_address: Address) {
-        Self::check_not_paused(&env);
-        env.storage()
-            .instance()
-            .extend_ttl(DAY_IN_LEDGERS, THIRTY_DAYS_IN_LEDGERS);
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
+
         // Retrieve owner
         let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
 
@@ -113,48 +107,45 @@ impl AutopilotVault {
         // Transfer funds from contract to owner
         let client = token::Client::new(&env, &token_address);
         client.transfer(&env.current_contract_address(), &owner, &amount);
-
-        // Emit an event so the withdrawal is auditable on-chain
-        env.events().publish(
-            (symbol_short!("withdraw"), owner.clone()),
-            (token_address.clone(), amount),
-        );
+        env.events()
+            .publish((symbol_short!("withdraw"),), (owner, amount, token_address));
+        Self::bump_ttl(&env);
     }
 
     /// Engine execute - allow engine to execute rule-based withdrawals
-    pub fn engine_execute(env: Env, amount: i128, token_address: Address) {
-        Self::check_not_paused(&env);
-        env.storage()
-            .instance()
-            .extend_ttl(DAY_IN_LEDGERS, THIRTY_DAYS_IN_LEDGERS);
+    pub fn engine_execute(
+        env: Env,
+        recipient: Address,
+        amount: i128,
+        token_address: Address,
+        memo: String,
+    ) -> bool {
+        if amount <= 0 {
+            panic!("Amount must be positive");
+        }
+
         let engine: Address = env.storage().instance().get(&DataKey::Engine).unwrap();
         engine.require_auth();
 
-        // Check spend limits
-        if let Some(limit) = env.storage().instance().get::<_, i128>(&DataKey::SpendLimit) {
-            if amount > limit {
-                panic!("Amount exceeds spend limit");
-            }
-        }
-
-        let owner: Address = env.storage().instance().get(&DataKey::Owner).unwrap();
-
-        // Transfer funds from contract to owner
         let client = token::Client::new(&env, &token_address);
-        client.transfer(&env.current_contract_address(), &owner, &amount);
-
-        // Emit an event so engine-driven transfers are auditable on-chain
+        client.transfer(&env.current_contract_address(), &recipient, &amount);
         env.events().publish(
-            (symbol_short!("exec"), engine.clone()),
-            (owner.clone(), token_address.clone(), amount),
+            (symbol_short!("execute"),),
+            (recipient, amount, token_address, memo),
         );
+        Self::bump_ttl(&env);
+        true
     }
 
-    /// Keep alive - permissionless TTL extension
+    /// Keep instance configuration available through long periods of inactivity.
     pub fn extend_ttl(env: Env) {
+        Self::bump_ttl(&env);
+    }
+
+    fn bump_ttl(env: &Env) {
         env.storage()
             .instance()
-            .extend_ttl(DAY_IN_LEDGERS, THIRTY_DAYS_IN_LEDGERS);
+            .extend_ttl(INSTANCE_TTL_LEDGERS, INSTANCE_TTL_LEDGERS);
     }
 }
 

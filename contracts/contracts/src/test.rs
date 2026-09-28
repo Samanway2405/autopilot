@@ -125,15 +125,21 @@ fn test_engine_execute() {
         .address();
     let token_client = token::Client::new(&env, &token_address);
     let token_admin_client = token::StellarAssetClient::new(&env, &token_address);
+    let recipient = Address::generate(&env);
 
     // Mint token to contract
     token_admin_client.mint(&contract_id, &1000);
     assert_eq!(token_client.balance(&contract_id), 1000);
 
-    client.engine_execute(&300, &token_address);
+    assert!(client.engine_execute(
+        &recipient,
+        &300,
+        &token_address,
+        &soroban_sdk::String::from_str(&env, "rule-1")
+    ));
 
     assert_eq!(token_client.balance(&contract_id), 700);
-    assert_eq!(token_client.balance(&owner), 300);
+    assert_eq!(token_client.balance(&recipient), 300);
 }
 
 #[test]
