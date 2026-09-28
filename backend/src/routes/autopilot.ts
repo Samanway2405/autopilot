@@ -2,7 +2,7 @@
 import { FastifyInstance } from "fastify";
 import { verifyAuth } from "../middleware/auth";
 import { getDb } from "../lib/db";
-import { fetchRecentPayments, executeRuleTransaction, isPaymentAlreadyProcessed } from "../lib/engine";
+import { fetchRecentPayments, executeRuleTransaction, claimPayment } from "../lib/engine";
 import { doesPaymentMatchTrigger } from "../lib/paymentTrigger";
 import { getHorizon } from "../stellar/horizon";
 import { buildPage, parseDateRange, parsePagination, readConfiguredLimit } from "../lib/pagination";
@@ -105,12 +105,8 @@ export default async function autopilotRoutes(server: FastifyInstance) {
         const payments = await fetchRecentPayments(user.publicKey, 10);
 
         for (const payment of payments) {
-          const alreadyDone = await isPaymentAlreadyProcessed(payment.id, sql);
-          if (alreadyDone) continue;
-
-          const paymentAmount = parseFloat(payment.amount);
-          // Rules execute in the same asset that was received.
-          const assetCode = parseAssetCode(payment.asset);
+          const paymentAmountXLM = parseFloat(payment.amount);
+          let paymentClaimed = false;
 
           for (const rule of rules) {
             const matches = doesPaymentMatchRule(payment, rule as any);
@@ -132,6 +128,11 @@ export default async function autopilotRoutes(server: FastifyInstance) {
             if (weeklyLimit !== null && spentWeek + execAmount > weeklyLimit) {
               console.log(`[Engine] ⚠ Weekly limit reached for ${user.publicKey.slice(0, 8)}…`);
               continue;
+            }
+
+            if (!paymentClaimed) {
+              paymentClaimed = await claimPayment(payment.id, user.id, sql);
+              if (!paymentClaimed) break;
             }
 
             const destination = process.env.AUTOPILOT_PUBLIC_KEY!;
