@@ -3,7 +3,7 @@ import { FastifyInstance } from "fastify";
 import { verifyAuth } from "../middleware/auth";
 import { getDb } from "../lib/db";
 import { fetchRecentPayments, executeRuleTransaction, isPaymentAlreadyProcessed } from "../lib/engine";
-import { doesPaymentMatchTrigger, parseAssetCode } from "../engine/processor";
+import { doesPaymentMatchTrigger } from "../lib/paymentTrigger";
 import { getHorizon } from "../stellar/horizon";
 import { buildPage, parseDateRange, parsePagination, readConfiguredLimit } from "../lib/pagination";
 
@@ -218,6 +218,5 @@ function doesPaymentMatchRule(
   payment: { amount: string; asset: string; from: string },
   rule: { trigger: string; action: string }
 ): boolean {
-  // Shared with the streaming/queue path so XLM and USDC are matched identically.
   return doesPaymentMatchTrigger(rule.trigger, payment.asset);
 }

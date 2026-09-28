@@ -23,8 +23,6 @@ import { checkSpendingLimit, recordSpend } from "./limitGuard";
 import { PAYMENT_QUEUE_NAME, PaymentJobData, CronJobData, CRON_QUEUE_NAME, getConnectionOptions } from "./queue";
 import { readConfiguredLimit } from "../lib/pagination";
 
-const DEFAULT_MAX_RULES_PER_USER = 20;
-
 /**
  * Core payment processing logic — exported for direct use.
  * Called by both the BullMQ worker AND directly from the Horizon stream.
