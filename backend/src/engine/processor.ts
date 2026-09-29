@@ -21,7 +21,6 @@ import { claimPayment, executeRuleTransaction } from "../lib/engine";
 import { doesPaymentMatchTrigger } from "../lib/paymentTrigger";
 import { checkSpendingLimit, recordSpend } from "./limitGuard";
 import { PAYMENT_QUEUE_NAME, PaymentJobData, CronJobData, CRON_QUEUE_NAME, getConnectionOptions } from "./queue";
-import { readConfiguredLimit } from "../lib/pagination";
 
 /**
  * Core payment processing logic — exported for direct use.

@@ -97,6 +97,8 @@ function GoalCard({
 }) {
   const [showLinkPanel, setShowLinkPanel] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState("");
   const cur = goal.currentAmount ?? 0;
   const tgt = goal.targetAmount ?? 1;
   const pct = Math.min(Math.round((cur / tgt) * 100), 100);
@@ -108,22 +110,39 @@ function GoalCard({
 
   const handleDelete = async () => {
     setDeleting(true);
-    await fetch(`/api/goals/${goal.id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    onDelete(goal.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/goals/${goal.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete goal. Please try again.");
+      onDelete(goal.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete goal. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleLink = async (ruleId: string | null) => {
-    await fetch(`/api/goals/${goal.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ linkedRuleId: ruleId }),
-    });
-    onLinkRule(goal.id, ruleId);
-    setShowLinkPanel(false);
+    setLinking(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/goals/${goal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ linkedRuleId: ruleId }),
+      });
+      if (!res.ok) throw new Error("Failed to update goal link. Please try again.");
+      onLinkRule(goal.id, ruleId);
+      setShowLinkPanel(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update goal link. Please try again.");
+    } finally {
+      setLinking(false);
+    }
   };
 
   return (
@@ -153,6 +172,8 @@ function GoalCard({
             </button>
           </div>
         </div>
+
+        {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
 
         {/* Progress */}
         <ProgressBar value={goal.currentAmount ?? 0} max={goal.targetAmount ?? 1} />
@@ -204,38 +225,26 @@ function GoalCard({
                 {linked && (
                   <button
                     onClick={() => handleLink(null)}
+                    disabled={linking}
                     className="w-full text-left px-3 py-2.5 rounded-xl text-xs text-red-400 hover:bg-red-500/[0.06] transition-colors"
                   >
                     ✕ Remove link
                   </button>
                 )}
-                {rules.filter(r => r.status === "active").map(r => {
-                  const rAsset = ruleAssetOf(r);
-                  // The engine only credits a goal when the executed asset
-                  // matches the goal's, so a mismatched link would silently
-                  // never advance progress. Flag it at link time.
-                  const mismatch = rAsset !== goalAsset;
-                  return (
-                    <button
-                      key={r.id}
-                      onClick={() => handleLink(r.id)}
-                      className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors ${
-                        r.id === goal.linkedRuleId
-                          ? "bg-blue-500/10 border border-blue-500/20 text-blue-400"
-                          : "text-white/50 hover:bg-white/[0.05]"
-                      }`}
-                    >
-                      <span>
-                        {r.description ?? `${r.action} ${r.amount}${r.isPercentage ? "%" : ` ${rAsset}`}`}
-                      </span>
-                      {mismatch && (
-                        <span className="block text-[10px] text-amber-400/80 mt-0.5">
-                          Moves {rAsset} — won't count toward this {goalAsset} goal
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+                {rules.filter(r => r.status === "active").map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => handleLink(r.id)}
+                    disabled={linking}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors ${
+                      r.id === goal.linkedRuleId
+                        ? "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                        : "text-white/50 hover:bg-white/[0.05]"
+                    }`}
+                  >
+                    {r.description ?? `${r.action} ${r.amount}${r.isPercentage ? "%" : " XLM"}`}
+                  </button>
+                ))}
                 {rules.filter(r => r.status === "active").length === 0 && (
                   <p className="text-xs text-white/25 px-3 py-2">No active rules to link</p>
                 )}
