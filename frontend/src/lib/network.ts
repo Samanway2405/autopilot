@@ -64,7 +64,7 @@ export const ANCHOR_URL: string | null = ANCHOR_URLS[STELLAR_NETWORK];
 export const NETWORK_LABEL: string = STELLAR_NETWORK;
 
 /** Build an explorer URL so the network segment is never wrong. */
-export function explorerUrl(type: "tx" | "account" | "ledger", id: string): string {
+export function explorerUrl(type: "tx" | "account" | "ledger" | "asset", id: string): string {
   return `${EXPLORER_BASE_URL}/${type}/${id}`;
 }
 
@@ -72,3 +72,22 @@ export function explorerUrl(type: "tx" | "account" | "ledger", id: string): stri
 export function horizonAccountUrl(publicKey: string): string {
   return `${HORIZON_URL}/accounts/${publicKey}`;
 }
+
+/** Network badge CSS classes for UI display */
+export function getNetworkBadgeClasses(): { bg: string; text: string; border: string; label: string } {
+  if (IS_MAINNET) {
+    return {
+      bg: "bg-emerald-500/10",
+      text: "text-emerald-400",
+      border: "border-emerald-500/20",
+      label: "MAINNET",
+    };
+  }
+  return {
+    bg: "bg-blue-500/10",
+    text: "text-blue-400",
+    border: "border-blue-500/20",
+    label: "TESTNET",
+  };
+}
+
